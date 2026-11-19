@@ -13,4 +13,11 @@ def cache(src,out):
  r=dict(schema=1,template=str(src.resolve()),sha256=sha(src),review_status='待核实',requirements={},parts=parts,paragraphs=[p.text for p in d.paragraphs],tables=[[[c.text for c in row.cells] for row in t.rows] for t in d.tables])
  out.parent.mkdir(parents=True,exist_ok=True); out.write_text(json.dumps(r,ensure_ascii=False,indent=2),encoding='utf-8'); return r,True
 if __name__=='__main__':
- p=argparse.ArgumentParser(); p.add_argument('--docx',required=True); p.add_argument('--cache',default='.workflow/template_rules.json'); a=p.parse_args(); r,c=cache(a.docx,a.cache); print(json.dumps(dict(reparsed=c,review_status=r['review_status']),ensure_ascii=False))
+ p=argparse.ArgumentParser()
+ p.add_argument('--docx',required=True)
+ p.add_argument('--cache',default='.workflow/template_rules.json')
+ a=p.parse_args()
+ r,reparsed=cache(a.docx,a.cache)
+ summary=dict(reparsed=reparsed,review_status=r.get('review_status','待核实'),
+              requirements=r['requirements'])
+ print(json.dumps(summary,ensure_ascii=False))

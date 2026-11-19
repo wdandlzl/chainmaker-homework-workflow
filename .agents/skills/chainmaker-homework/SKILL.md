@@ -7,13 +7,26 @@ description: 完成长安链训练营单份作业；从当前 PDF 建立可恢�
 遵守根目录 AGENTS.md。脚本路径均相对本 Skill 的 scripts/；命令使用可用 Python（Windows 的 python 别名可能无效，可通过工作区依赖工具定位运行时）。
 
 1. 先读 `.workflow/tasks/<作业名称>/TASK.md`。核对已验证项的输入、输出、证据哈希和环境，失效项及其依赖退回待验证；仍有效的不重跑。不存在则按 `.workflow/TASK_TEMPLATE.md` 创建，禁止覆盖既有任务。
-2. 仅对指定 PDF 执行 `scan_pdf.py --pdf <路径> --output-dir <缓存目录>`，定位【实验作业】及跨页续文，按原题登记 ID、来源页码、依赖、成果、验收和证据。遇图片公式须视觉核对。
-3. 执行 `template_cache.py --docx <原模板> --cache .workflow/template_rules.json`。缓存命中不重复模型分析。首次、SHA256 变化或无效时，缓存保存全部 Word XML（含样式、页眉页脚、图形引用）、段落和表格；再用 `inspect_template.py --docx <模板> --out <扫描.md>` 并实际渲染核实图形、格式、说明及规则。新缓存 requirements 为空且待核实，必须重新填写，不自动沿用旧规则。完整视觉检查后才将 review_status 标为已验证；修改版模板还需核对生成器段落/单元格映射。
-4. 独立执行真实实验。查错先关键词检索唯一 `.workflow/corrections.md`，检查适用环境。定位页码、实际现象及根因；结合官方文档/帮助/运行结果做最小修正，不改原任务。原则上最多三种实质不同方案；失败记阻塞并继续独立项。仅实际错误或阻塞新增记录，区分已确认/待核实，日志另存，禁止二级纠错库。
-5. 报告输入 JSON 包含 fields、summary，优先使用 sections。每节包含 task_ids（对应 TASK 矩阵）、title、paragraphs，可按需提供 commands（实际命令数组）、results（headers 和 rows，单元格用字符串）、figures（path 为真实图片绝对路径、caption 说明验证结果）。旧输入继续使用 steps 和 images。fields 必含 course/team/name/school/contact/team_en/date/declaration_date/partners1/partners2/project/equipment/division；个人信息来自用户，无同实验者按实际填写。正文按任务写明关键配置、运行命令或附件入口、实际结果和对应证据。排障写清现象、原因、修正和复验，未确认的原因明确标注。同一次运行的结果相互核对后再写入报告。截图紧跟相关步骤，可使用保留关键输出和身份的裁剪副本，原图留作证据。模拟测试不得成为作业证据。
+2. 仅对指定 PDF 执行 `scan_pdf.py --pdf <路径> --output-dir <缓存目录>`。脚本在本地保存逐页索引，先阅读终端的【实验作业】候选预览，再用 `scan_pdf.py --pdf <路径> --pages 3,7-9` 回读实际相关页。沿后续页核实到题目结束，按原题登记 ID、来源页码、依赖、成果、验收和证据。标题缺失、提取不足或遇图片公式时，用索引定位并渲染相关页。技术参考按需要节选。
+3. 执行 `template_cache.py --docx <原模板> --cache .workflow/template_rules.json`，直接使用终端返回的 requirements 和核验状态。缓存命中、状态已验证且规则齐备时复用该摘要。首次、SHA256 变化或缓存无效时，仍完整缓存 Word XML、段落和表格；再用 `inspect_template.py --docx <模板> --out <扫描.md>` 并渲染核实图形、格式、说明及规则。新缓存 requirements 为空且待核实，须重新填写；遇规则冲突回查原模板。视觉核实后才将 review_status 标为已验证，修改版模板还需核对生成器段落/单元格映射。
+4. 正式执行前，在 TASK 的“实验阶段与证据计划”按实际顺序规划阶段，关联原题 ID，并确定目的、拟执行操作、预期结果及截图时机和需保留的画面内容。独立执行真实实验，当关键配置、操作结果、异常或恢复结果出现时立即从真实 Ubuntu 图形环境截图，保留原图及日志，记录运行标识、实际命令、实测现象、截图路径、所证明的内容和问题处理。按实验需要选取截图，简单命令可以合并展示。避免事后拼装画面或改动输出；历史证据有效时照常复用，缺失则如实记录。查错先检索唯一 `.workflow/corrections.md` 并核对适用环境；记录页码、现象、原因、最小修正和复验。原则上最多三种实质不同方案；失败记阻塞并继续独立项。
+5. 报告按实际经过写作。先交代本阶段目的和准备，给出实际命令、关键参数和预期，紧接着展示操作或结果截图及图注，再用实测现象解释验证结论。排障交代现象、原因、修正和复验，标明未确认的原因及环境限制。保留判断所需的版本、参数和数据，完整日志和标识放证据文件，按需用短表汇总。截图可用保留关键输出和身份的裁剪副本，原图留作证据。模拟测试不得成为作业证据。
 6. `report_generator.py --template <原模板> --rules .workflow/template_rules.json --data <输入.json> --out <课程+队伍+姓名+学校.docx> --pdf` 基于原模板生成，保留样式和表格；拒绝覆盖已有输出。PDF 使用现有 Word COM，不自行安装软件。导出失败修复或记录阻塞，不能以 DOCX 代替最终 PDF。
-7. `validate_report.py --report <DOCX> --rules .workflow/template_rules.json --data <输入.json> --json-out <验收.json>` 检查实际报告中的字数、图片、字段、说明及 PDF 命名。原 `validate_delivery.py --task <TASK.md> --report <DOCX> --output-dir <交付目录> --json-out <结构验收.json>` 仅作为补充结构检查，不能替代专项验收。
-8. 实际渲染 DOCX/PDF，逐页检查文字、图片、空白及分页，确认截图中的关键输出和要求的身份可辨认，图注与截图相邻。按最终 PDF 逐题核对复现入口、正文结论和证据，在 TASK 矩阵登记页码及小节、图号或表号，记录输入输出哈希及结论。修订后重新渲染并检查受影响页面及其分页。程序检查有序结构，实验真实性、人员信息真实性和任务覆盖由内容验收确认。全部通过才已验证。独立完成后可选少量同题报告查漏。状态统一：待执行、执行中、已生成待验证、已验证、阻塞。
+7. `validate_report.py --report <DOCX> --rules .workflow/template_rules.json --data <输入.json> --json-out <验收.json>` 检查字数、图片、字段、说明及 PDF 命名。新版分节还检查 DOCX 块顺序和证据标识，并使用 pypdf 核对 PDF 中小节标题与图注的顺序。原 `validate_delivery.py --task <TASK.md> --report <DOCX> --output-dir <交付目录> --json-out <结构验收.json>` 仅作为补充结构检查，不能替代专项验收。
+8. 实际渲染 DOCX/PDF，核对每个重要阶段的操作、预期、证据与实测分析，按原始日志核对同一运行的版本、参数、标识和结果。逐页检查图文顺序及分页，核对截图和图注的语义、身份和终端字迹、裁切、重复截图、大片空白、表格溢出和大段原始数据。程序报告结构、显式运行元数据和尺寸异常，Codex 对照真实证据判断截图内容、实验真实性和覆盖。处理程序的错误及复查提示，在 TASK 登记最终页码/图表号、证据路径、输入输出哈希和结论；修订后重新渲染受影响页面。全部通过才记已验证。独立完成后可选少量同题报告查漏。状态统一：待执行、执行中、已生成待验证、已验证、阻塞。
+
+## 报告输入
+
+- 顶层包含 `fields`、`summary`、`sections`。`fields` 必含 course/team/name/school/contact/team_en/date/declaration_date/partners1/partners2/project/equipment/division。人员信息按实际填写。
+- 每节提供 `title`、对应原题的 `task_ids`、`run_id`（可追溯的运行或记录标识）和有序的 `blocks`。文本块含 `type` 和 `text`。阶段至少写明 `purpose`、`expected`、`operation` 或 `command`，以及 `observation`。按需穿插 `text`、`analysis`、`issue`。
+- `figure` 块含图片绝对路径 `path`、简洁图注 `caption` 和证据自身的 `run_id`。放在对应操作之后，随后使用 `observation`、`analysis` 或 `issue` 解释。适用日志证据的阶段可在 `observation` 填写证据文件绝对路径 `path` 和其 `run_id`；按 TASK 计划留存所需截图。
+- 在阶段或块的 `facts` 对象记录需要跨阶段核对的版本、参数和结果；同一 `run_id` 下同名字段需一致。不同轮次各用实际标识。表格块 `table` 含 `headers` 和 `rows`，单元格用字符串。
+- 已有 `sections.paragraphs/commands/results/figures` 和更早的 `steps/images` 输入均兼容。
+
+## 日志按需回读
+
+- 保留原始日志。先用 `log_excerpt.py --log <日志路径>` 获取带原始行号的常见命令、版本、结果和报错片段。已知任务的验证标识时，可重复指定 `--match <正则>` 选择关键行，按需调整 `--context` 和 `--limit`。
+- 用 `log_excerpt.py --log <日志路径> --lines 12-20` 回读完整原行。摘要未涵盖所需数据、出现冲突或需要排障时，扩大至相关命令记录、日志区间和上下文。实验报告结论仍须能回溯到真实证据。
 
 纠错记录字段：问题 ID、所属作业/任务 ID、类型、确认状态、PDF 页码（适用时）、现象/原因、修正方案、环境版本、验证结果、证据路径。相同问题更新原记录，不重复新增。任务仅链接问题 ID。
 

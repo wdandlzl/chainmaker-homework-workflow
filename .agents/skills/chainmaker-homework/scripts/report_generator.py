@@ -3,24 +3,40 @@ from datetime import date
 from pathlib import Path
 from docx import Document
 from docx.enum.text import WD_ALIGN_PARAGRAPH
+from docx.image.image import Image as DocxImage
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 from docx.shared import Inches, Pt, RGBColor
 from template_cache import sha
 FIELDS=['course','team','name','school','contact','team_en','date','declaration_date','partners1','partners2','project','equipment','division']
 
+TEXT_BLOCKS = {'text', 'purpose', 'operation', 'expected', 'observation', 'analysis', 'issue'}
+
+
+def section_blocks(section):
+    if 'blocks' in section:
+        return section['blocks']
+    blocks = [{'type': 'text', 'text': text} for text in section['paragraphs']]
+    blocks.extend({'type': 'command', 'text': text} for text in section.get('commands', []))
+    if 'results' in section:
+        blocks.append({'type': 'table', **section['results']})
+    blocks.extend({'type': 'figure', **figure} for figure in section.get('figures', []))
+    return blocks
+
+
+def compact(paragraph):
+    paragraph.alignment = WD_ALIGN_PARAGRAPH.LEFT
+    formatting = paragraph.paragraph_format
+    formatting.first_line_indent = Pt(0)
+    paragraph._p.get_or_add_pPr().get_or_add_ind().set(qn('w:firstLineChars'), '0')
+    formatting.line_spacing = 1.15
+    formatting.space_after = Pt(3)
+
 
 def write_sections(document, anchor, sections):
     page = document.sections[0]
     content_width = page.page_width - page.left_margin - page.right_margin
-
-    def compact(paragraph):
-        paragraph.alignment = WD_ALIGN_PARAGRAPH.LEFT
-        formatting = paragraph.paragraph_format
-        formatting.first_line_indent = Pt(0)
-        paragraph._p.get_or_add_pPr().get_or_add_ind().set(qn('w:firstLineChars'), '0')
-        formatting.line_spacing = 1.15
-        formatting.space_after = Pt(3)
+    max_image_height = int((page.page_height - page.top_margin - page.bottom_margin) * 0.72)
 
     figure_number = 0
     for number, section in enumerate(sections, 1):
@@ -29,64 +45,76 @@ def write_sections(document, anchor, sections):
         title.paragraph_format.keep_with_next = True
         anchor.addnext(title._p)
         anchor = title._p
-        for body in section['paragraphs']:
-            paragraph = document.add_paragraph(body)
-            paragraph.paragraph_format.widow_control = True
-            anchor.addnext(paragraph._p)
-            anchor = paragraph._p
-        for command in section.get('commands', []):
-            paragraph = document.add_paragraph()
-            compact(paragraph)
-            paragraph.paragraph_format.keep_together = True
-            font = paragraph.add_run(command).font
-            font.name = 'Consolas'
-            font.size = Pt(10)
-            anchor.addnext(paragraph._p)
-            anchor = paragraph._p
-        if 'results' in section:
-            results = section['results']
-            headers = results['headers']
-            table = document.add_table(rows=0, cols=len(headers))
-            table.autofit = False
-            if len(headers) == 2:
-                table.columns[0].width = int(content_width * 0.24)
-                table.columns[1].width = content_width - table.columns[0].width
-            borders = OxmlElement('w:tblBorders')
-            for edge in ('top', 'left', 'bottom', 'right', 'insideH', 'insideV'):
-                border = OxmlElement(f'w:{edge}')
-                border.set(qn('w:val'), 'single')
-                border.set(qn('w:sz'), '4')
-                border.set(qn('w:color'), 'BFBFBF')
-                borders.append(border)
-            table._tbl.tblPr.append(borders)
-            for row_number, values in enumerate([headers, *results['rows']]):
-                if len(values) != len(headers):
-                    raise ValueError('结果表列数不一致')
-                row = table.add_row()
-                properties = row._tr.get_or_add_trPr()
-                properties.append(OxmlElement('w:cantSplit'))
-                if row_number == 0:
-                    properties.append(OxmlElement('w:tblHeader'))
-                for cell, value in zip(row.cells, values):
-                    paragraph = cell.paragraphs[0]
+        for block in section_blocks(section):
+            kind = block['type']
+            if kind in TEXT_BLOCKS or kind == 'command':
+                paragraph = document.add_paragraph()
+                paragraph.paragraph_format.widow_control = True
+                run = paragraph.add_run(block['text'])
+                if kind == 'command':
                     compact(paragraph)
-                    run = paragraph.add_run(value)
-                    run.bold = row_number == 0
-                    run.font.size = Pt(11)
-            anchor.addnext(table._tbl)
-            anchor = table._tbl
-        for figure in section.get('figures', []):
-            figure_number += 1
-            picture = document.add_paragraph()
-            picture.alignment = 1
-            picture.paragraph_format.keep_with_next = True
-            picture.add_run().add_picture(figure['path'], width=min(content_width, Inches(6)))
-            caption = document.add_paragraph()
-            caption.alignment = 1
-            caption.add_run(f"图 {figure_number} {figure['caption']}").font.size = Pt(10)
-            anchor.addnext(picture._p)
-            picture._p.addnext(caption._p)
-            anchor = caption._p
+                    paragraph.paragraph_format.keep_together = True
+                    run.font.name = 'Consolas'
+                    run.font.size = Pt(10)
+                anchor.addnext(paragraph._p)
+                anchor = paragraph._p
+            elif kind == 'table':
+                anchor = insert_result_table(document, anchor, block, content_width)
+            elif kind == 'figure':
+                figure_number += 1
+                image = DocxImage.from_file(block['path'])
+                width = min(content_width, int(max_image_height * image.px_width / image.px_height))
+                height = int(width * image.px_height / image.px_width)
+                picture = document.add_paragraph()
+                compact(picture)
+                picture.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                picture.paragraph_format.keep_with_next = True
+                picture.add_run().add_picture(block['path'], width=width, height=height)
+                caption = document.add_paragraph()
+                compact(caption)
+                caption.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                caption.paragraph_format.keep_together = True
+                caption.add_run(f"图 {figure_number} {block['caption']}").font.size = Pt(10)
+                anchor.addnext(picture._p)
+                picture._p.addnext(caption._p)
+                anchor = caption._p
+            else:
+                raise ValueError(f"未知报告内容类型: {kind}")
+
+
+def insert_result_table(document, anchor, results, content_width):
+    headers = results['headers']
+    if not headers:
+        raise ValueError('结果表缺少表头')
+    table = document.add_table(rows=0, cols=len(headers))
+    table.autofit = False
+    if len(headers) == 2:
+        table.columns[0].width = int(content_width * 0.24)
+        table.columns[1].width = content_width - table.columns[0].width
+    borders = OxmlElement('w:tblBorders')
+    for edge in ('top', 'left', 'bottom', 'right', 'insideH', 'insideV'):
+        border = OxmlElement(f'w:{edge}')
+        border.set(qn('w:val'), 'single')
+        border.set(qn('w:sz'), '4')
+        border.set(qn('w:color'), 'BFBFBF')
+        borders.append(border)
+    table._tbl.tblPr.append(borders)
+    for row_number, values in enumerate([headers, *results['rows']]):
+        if len(values) != len(headers):
+            raise ValueError('结果表列数不一致')
+        row = table.add_row()
+        properties = row._tr.get_or_add_trPr()
+        properties.append(OxmlElement('w:cantSplit'))
+        if row_number == 0:
+            properties.append(OxmlElement('w:tblHeader'))
+        for cell, value in zip(row.cells, values):
+            paragraph = cell.paragraphs[0]
+            compact(paragraph)
+            run = paragraph.add_run(value)
+            run.bold = row_number == 0
+            run.font.size = Pt(11)
+    anchor.addnext(table._tbl)
+    return table._tbl
 
 
 def generate(src,rules,data,out):
